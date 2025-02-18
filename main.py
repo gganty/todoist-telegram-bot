@@ -154,11 +154,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     settings = user_data.get('settings', {})
-    # Обеспечиваем, что значения настроек - целые числа
     settings = {k: int(v) for k, v in settings.items()}
     for block in blocks:
         if block not in settings:
-            settings[block] = 1  # Включено по умолчанию
+            settings[block] = 1  # Turned on by default
 
     keyboard = []
     for block in blocks:
@@ -179,7 +178,6 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_data = get_user_data(user_id)
     settings = user_data.get('settings', {})
-    # Обеспечиваем, что значения настроек - целые числа
     settings = {k: int(v) for k, v in settings.items()}
 
     blocks = ['description', 'project', 'priority', 'deadline']
@@ -193,7 +191,6 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == 'done':
-        # Настройки уже сохранены после каждого нажатия, поэтому можем просто выйти
         await query.edit_message_text("Настройки сохранены.")
         return
     else:
@@ -201,7 +198,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_state = settings.get(block, 1)
         settings[block] = 0 if current_state else 1
         user_data['settings'] = settings
-        save_user_data(user_id, user_data)  # Сохраняем настройки после каждого изменения
+        save_user_data(user_id, user_data)  # Saving settings after every change
 
         keyboard = []
         for b in blocks:
@@ -449,7 +446,7 @@ async def change_api(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 # main
 if __name__ == "__main__":
-    # Проверяем и добавляем столбец 'settings', если его нет
+    # DB table update: check if settings column exists
     add_settings_column()
     key = open("secret.txt", "r").readline().rstrip()
     application = ApplicationBuilder().token(key).build()
