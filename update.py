@@ -1,6 +1,6 @@
 from func import connect_db
 
-# Adapting table update v2.0 (settings added)
+# Adapting database update (settings added)
 def add_settings_column():
     conn = connect_db()
     c = conn.cursor()

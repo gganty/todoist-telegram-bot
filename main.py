@@ -29,7 +29,7 @@ conn.close()
 
 # main
 if __name__ == "__main__":
-    # DB table update: check if settings column exists
+    # DB table update: check if settings and language columns exist
     add_settings_column()
     key = open("develop_secret.txt", "r").readline().rstrip()
     application = ApplicationBuilder().token(key).build()
