@@ -1,6 +1,6 @@
 import logging
 from func import *
-from update import add_settings_column
+from update import add_settings_column, add_language_column
 
 # Logging
 logging.basicConfig(
@@ -20,7 +20,8 @@ c.execute('''
         project_id TEXT,
         priority INTEGER,
         deadline TEXT,
-        settings TEXT
+        settings TEXT,
+        language TEXT DEFAULT 'en'
     )
 ''')
 conn.commit()
@@ -31,6 +32,7 @@ conn.close()
 if __name__ == "__main__":
     # DB table update: check if settings and language columns exist
     add_settings_column()
+    add_language_column()
     key = open("secret.txt", "r").readline().rstrip()
     application = ApplicationBuilder().token(key).build()
 
@@ -51,5 +53,7 @@ if __name__ == "__main__":
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler('settings', settings_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern='^(description|project|priority|deadline|done)$'))
+    application.add_handler(CommandHandler('language', language_command))
+    application.add_handler(CallbackQueryHandler(language_callback, pattern='^(en|ru)$'))
 
     application.run_polling()

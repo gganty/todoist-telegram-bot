@@ -28,5 +28,9 @@ texts = {
     "deadline_set": ["Deadline set.", "Дедлайн установлен."],
     "success_task_added": ["Task has been added successfully.\nYou may now continue adding tasks.", "Задача успешно добавлена.\nВы можете продолжить добавление задач."],
     "err_task_added": ["An error occurred while adding the task. Please, try again.", "Ошибка при добавлении задачи. Попробуйте снова."],
+    "settings_blocks": ["Settings blocks:", "Настройки блоков:"],
+    "settings_saved": ["Settings saved.", "Настройки сохранены."],
+    "choose_language": ["Choose your language:", "Выберите язык:"],
+    "language_updated": ["Language updated.", "Язык обновлен."],
 
 }
