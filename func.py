@@ -6,7 +6,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     CallbackQueryHandler, ContextTypes, ConversationHandler
 )
-import requests
+import aiohttp
 from datetime import datetime
 
 # DB connection
@@ -226,14 +226,15 @@ async def handle_task_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # Project choice asker
 async def ask_project(update: Update, context: ContextTypes.DEFAULT_TYPE, user_data) -> int:
     api_key = user_data["api_key"]
-    response = requests.get(
-        "https://api.todoist.com/rest/v2/projects",
-        headers={"Authorization": f"Bearer {api_key}"}
-    )
-    if response.status_code != 200:
-        await update.message.reply_text("Ошибка при получении списка проектов. Попробуйте снова позже.")
-        return ASK_TASK
-    projects = response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "https://api.todoist.com/rest/v2/projects",
+            headers={"Authorization": f"Bearer {api_key}"}
+        ) as response:
+            if response.status != 200:
+                await update.message.reply_text("Ошибка при получении списка проектов. Попробуйте снова позже.")
+                return ASK_TASK
+            projects = await response.json()
     keyboard = []
     for project in projects:
         keyboard.append([InlineKeyboardButton(project['name'], callback_data=project['id'])])
@@ -393,22 +394,22 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, query=Fal
     if user_data.get('deadline'):
         task_data["due_string"] = user_data["deadline"]
 
-    response = requests.post(
-        "https://api.todoist.com/rest/v2/tasks",
-        json=task_data,
-        headers={"Authorization": f"Bearer {api_key}"}
-    )
-    if response.status_code in (200, 204):
-        message = "Задача успешно добавлена!\nТеперь Вы можете добавить следующую задачу."
-    else:
-        message = "Ошибка при добавлении задачи. Попробуйте снова."
-
-    user_data["task"] = None
-    user_data["description"] = None
-    user_data["project_id"] = None
-    user_data["priority"] = None
-    user_data["deadline"] = None
-    save_user_data(user_id, user_data)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://api.todoist.com/rest/v2/tasks",
+            json=task_data,
+            headers={"Authorization": f"Bearer {api_key}"}
+        ) as response:
+            if response.status in (200, 204):
+                message = "Задача успешно добавлена!\nТеперь Вы можете добавить следующую задачу."
+                user_data["task"] = None
+                user_data["description"] = None
+                user_data["project_id"] = None
+                user_data["priority"] = None
+                user_data["deadline"] = None
+                save_user_data(user_id, user_data)
+            else:
+                message = "Ошибка при добавлении задачи. Попробуйте снова."
 
     if query:
         await update.callback_query.edit_message_text(message)
