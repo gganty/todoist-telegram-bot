@@ -398,17 +398,17 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, query=Fal
         json=task_data,
         headers={"Authorization": f"Bearer {api_key}"}
     )
+
     if response.status_code in (200, 204):
         message = "Задача успешно добавлена!\nТеперь Вы можете добавить следующую задачу."
+        user_data["task"] = None
+        user_data["description"] = None
+        user_data["project_id"] = None
+        user_data["priority"] = None
+        user_data["deadline"] = None
+        save_user_data(user_id, user_data)
     else:
         message = "Ошибка при добавлении задачи. Попробуйте снова."
-
-    user_data["task"] = None
-    user_data["description"] = None
-    user_data["project_id"] = None
-    user_data["priority"] = None
-    user_data["deadline"] = None
-    save_user_data(user_id, user_data)
 
     if query:
         await update.callback_query.edit_message_text(message)
