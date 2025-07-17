@@ -24,7 +24,7 @@ texts = {
     "project_choice": ["Choose a project:", "Выберите проект:"],
     "no_priority": ["No priority", "Без приоритета"],
     "deadline_skipped": ["Deadline setting skipped.", "Установка дедлайна пропущена."],
-    "err_deadline_invalid": ["Invalid date format. Please, try again.", "Неправильнй формат даты. Попробуйте снова."],
+    "err_deadline_invalid": ["Invalid date format. Please, try again.", "Неправильный формат даты. Попробуйте снова."],
     "deadline_set": ["Deadline set.", "Дедлайн установлен."],
     "success_task_added": ["Task has been added successfully.\nYou may now continue adding tasks.", "Задача успешно добавлена.\nВы можете продолжить добавление задач."],
     "err_task_added": ["An error occurred while adding the task. Please, try again.", "Ошибка при добавлении задачи. Попробуйте снова."],
