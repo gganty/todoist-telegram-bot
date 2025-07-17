@@ -6,6 +6,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     CallbackQueryHandler, ContextTypes, ConversationHandler
 )
+from lang import texts, lang
 import aiohttp
 from datetime import datetime
 
@@ -14,6 +15,12 @@ def connect_db():
     return sqlite3.connect('user_data.db', check_same_thread=False)
 
 ASK_API_KEY, ASK_TASK, ASK_DESCRIPTION, ASK_PROJECT, ASK_PRIORITY, ASK_DEADLINE = range(6)
+
+# Translation helper
+def t(user_data, key):
+    lang_code = user_data.get("language", "en")
+    idx = lang.get(lang_code, lang["en"])
+    return texts[key][idx]
 
 
 """
@@ -40,7 +47,8 @@ def get_user_data(user_id: int) -> dict:
             "project_id": row[4],
             "priority": row[5],
             "deadline": row[6],
-            "settings": settings
+            "settings": settings,
+            "language": row[8] if len(row) > 8 and row[8] else "en"
         }
     return {"settings": {}}
 
@@ -51,8 +59,8 @@ def save_user_data(user_id: int, data) -> None:
     c = conn.cursor()
     c.execute('''
         INSERT INTO user_data (user_id, api_key, task, description, project_id,
-                               priority, deadline, settings)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                               priority, deadline, settings, language)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             api_key=excluded.api_key,
             task=excluded.task,
@@ -60,7 +68,8 @@ def save_user_data(user_id: int, data) -> None:
             project_id=excluded.project_id,
             priority=excluded.priority,
             deadline=excluded.deadline,
-            settings=excluded.settings
+            settings=excluded.settings,
+            language=excluded.language
     ''', (
         user_id,
         data.get("api_key"),
@@ -69,7 +78,8 @@ def save_user_data(user_id: int, data) -> None:
         data.get("project_id"),
         data.get("priority"),
         data.get("deadline"),
-        json.dumps(data.get("settings", {}))
+        json.dumps(data.get("settings", {})),
+        data.get("language", "en")
     ))
     conn.commit()
     conn.close()
@@ -84,10 +94,11 @@ async def save_api_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         user_data = get_user_data(user_id)
         user_data["api_key"] = api_key
         save_user_data(user_id, user_data)
-        await update.message.reply_text("Ключ сохранён, теперь пришлите текст задачи, которую хотите добавить.")
+        await update.message.reply_text(t(user_data, "key_saved"))
         return ASK_TASK
     else:
-        await update.message.reply_text("Ошибка формата ключа API. Пожалуйста, отправьте корректный ключ.")
+        user_data = get_user_data(user_id)
+        await update.message.reply_text(t(user_data, "err_key_invalid"))
         return ASK_API_KEY
 
 
@@ -98,10 +109,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     blocks = ['description', 'project', 'priority', 'deadline']
     block_names = {
-        'description': 'Описание',
-        'project': 'Проект',
-        'priority': 'Приоритет',
-        'deadline': 'Дедлайн'
+        'description': t(user_data, 's_description'),
+        'project': t(user_data, 's_project'),
+        'priority': t(user_data, 's_priority'),
+        'deadline': t(user_data, 's_deadline')
     }
 
     settings = user_data.get('settings', {})
@@ -117,10 +128,10 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         button_text = f"{block_names[block]} {emoji}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=block)])
 
-    keyboard.append([InlineKeyboardButton("Готово", callback_data='done')])
+    keyboard.append([InlineKeyboardButton(t(user_data, 'done'), callback_data='done')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Настройки блоков:", reply_markup=reply_markup)
+    await update.message.reply_text(t(user_data, 'settings_blocks'), reply_markup=reply_markup)
 
 
 # Processing clicks in settings section
@@ -133,16 +144,16 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     blocks = ['description', 'project', 'priority', 'deadline']
     block_names = {
-        'description': 'Описание',
-        'project': 'Проект',
-        'priority': 'Приоритет',
-        'deadline': 'Дедлайн'
+        'description': t(user_data, 's_description'),
+        'project': t(user_data, 's_project'),
+        'priority': t(user_data, 's_priority'),
+        'deadline': t(user_data, 's_deadline')
     }
 
     await query.answer()
 
     if query.data == 'done':
-        await query.edit_message_text("Настройки сохранены.")
+        await query.edit_message_text(t(user_data, 'settings_saved'))
         return
     else:
         block = query.data
@@ -158,7 +169,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             button_text = f"{block_names[b]} {emoji}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=b)])
 
-        keyboard.append([InlineKeyboardButton("Готово", callback_data='done')])
+        keyboard.append([InlineKeyboardButton(t(user_data, 'done'), callback_data='done')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_reply_markup(reply_markup=reply_markup)
@@ -170,8 +181,31 @@ async def change_api(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_data = get_user_data(user_id)
     user_data["api_key"] = None
     save_user_data(user_id, user_data)
-    await update.message.reply_text("Пришлите Ваш новый ключ API для Todoist в чат.")
+    await update.message.reply_text(t(user_data, "key_new"))
     return ASK_API_KEY
+
+
+# Change language command
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = get_user_data(user_id)
+    keyboard = [[
+        InlineKeyboardButton("English", callback_data='en'),
+        InlineKeyboardButton("Русский", callback_data='ru')
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(t(user_data, 'choose_language'), reply_markup=reply_markup)
+
+
+async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    user_data = get_user_data(user_id)
+    await query.answer()
+    lang_code = query.data
+    user_data['language'] = lang_code
+    save_user_data(user_id, user_data)
+    await query.edit_message_text(t(user_data, 'language_updated'))
 
 
 
@@ -184,10 +218,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     user_data = get_user_data(user_id)
     if user_data and "api_key" in user_data and user_data["api_key"]:
-        await update.message.reply_text("Добро пожаловать обратно!\n\nВы можете продолжить добавление задач.")
+        await update.message.reply_text(t(user_data, "welcome_back"))
         return ASK_TASK
     else:
-        await update.message.reply_text("Пришлите Ваш ключ API для Todoist в чат.")
+        await update.message.reply_text(t(user_data, "key_add"))
         return ASK_API_KEY
 
 
@@ -196,7 +230,7 @@ async def handle_task_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_id = update.effective_user.id
     user_data = get_user_data(user_id)
     if not user_data.get("api_key"):
-        await update.message.reply_text("Пожалуйста, используйте команду /start, чтобы ввести ключ API.")
+        await update.message.reply_text(t(user_data, "register"))
         return ASK_API_KEY
 
     if update.message.text and not update.message.photo:
@@ -204,22 +238,19 @@ async def handle_task_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         save_user_data(user_id, user_data)
         settings = user_data.get('settings', {})
         if settings.get('description', 1):
-            await update.message.reply_text("Напишите описание задачи. Если хотите оставить его пустым - напишите None")
+            await update.message.reply_text(t(user_data, "description"))
             return ASK_DESCRIPTION
         elif settings.get('project', 1):
             return await ask_project(update, context, user_data)
         elif settings.get('priority', 1):
             return await ask_priority(update, context, user_data)
         elif settings.get('deadline', 1):
-            await update.message.reply_text(
-                "Напишите дедлайн для этой задачи в чат. Если дедлайн не требуется - отправьте точку.\n\n"
-                "Дедлайн должен вводиться в формате ДД/ММ/ГГГГ ЧЧ:ММ или ДД/ММ/ГГГГ"
-            )
+            await update.message.reply_text(t(user_data, "deadline"))
             return ASK_DEADLINE
         else:
             return await add_task(update, context)
     else:
-        await update.message.reply_text("Пожалуйста, отправьте текст задачи без изображения.")
+        await update.message.reply_text(t(user_data, "err_title_invalid"))
         return ASK_TASK
 
 
@@ -232,14 +263,14 @@ async def ask_project(update: Update, context: ContextTypes.DEFAULT_TYPE, user_d
             headers={"Authorization": f"Bearer {api_key}"}
         ) as response:
             if response.status != 200:
-                await update.message.reply_text("Ошибка при получении списка проектов. Попробуйте снова позже.")
+                await update.message.reply_text(t(user_data, "err_project_list_unavailable"))
                 return ASK_TASK
             projects = await response.json()
     keyboard = []
     for project in projects:
         keyboard.append([InlineKeyboardButton(project['name'], callback_data=project['id'])])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите проект:", reply_markup=reply_markup)
+    await update.message.reply_text(t(user_data, "project_choice"), reply_markup=reply_markup)
     return ASK_PROJECT
 
 
@@ -251,7 +282,7 @@ async def handle_project_selection(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     project_id = query.data
     if not user_data.get("api_key"):
-        await query.edit_message_text("Пожалуйста, используйте команду /start, чтобы ввести ключ API.")
+        await query.edit_message_text(t(user_data, "register"))
         return ASK_API_KEY
 
     user_data["project_id"] = project_id
@@ -260,10 +291,7 @@ async def handle_project_selection(update: Update, context: ContextTypes.DEFAULT
     if settings.get('priority', 1):
         return await ask_priority(update, context, user_data)
     elif settings.get('deadline', 1):
-        await query.edit_message_text(
-            "Напишите дедлайн для этой задачи в чат. Если дедлайн не требуется - отправьте точку.\n\n"
-            "Дедлайн должен вводиться в формате ДД/ММ/ГГГГ ЧЧ:ММ или ДД/ММ/ГГГГ"
-        )
+        await query.edit_message_text(t(user_data, "deadline"))
         return ASK_DEADLINE
     else:
         await add_task(update, context, query=True)
@@ -278,13 +306,13 @@ async def ask_priority(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
             InlineKeyboardButton("2", callback_data="3"),
             InlineKeyboardButton("3", callback_data="2")
         ],
-        [InlineKeyboardButton("Без приоритета", callback_data="1")]
+        [InlineKeyboardButton(t(user_data, "no_priority"), callback_data="1")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if isinstance(update, Update) and update.message:
-        await update.message.reply_text("Выберите приоритет задачи:", reply_markup=reply_markup)
+        await update.message.reply_text(t(user_data, "priority"), reply_markup=reply_markup)
     else:
-        await update.callback_query.edit_message_text("Выберите приоритет задачи:", reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(t(user_data, "priority"), reply_markup=reply_markup)
     return ASK_PRIORITY
 
 
@@ -296,7 +324,7 @@ async def handle_priority_selection(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     if not user_data.get("api_key"):
-        await query.edit_message_text("Пожалуйста, используйте команду /start, чтобы ввести ключ API.")
+        await query.edit_message_text(t(user_data, "register"))
         return ASK_API_KEY
 
     priority = query.data
@@ -304,10 +332,7 @@ async def handle_priority_selection(update: Update, context: ContextTypes.DEFAUL
     save_user_data(user_id, user_data)
     settings = user_data.get('settings', {})
     if settings.get('deadline', 1):
-        await query.edit_message_text(
-            "Напишите дедлайн для этой задачи в чат. Если дедлайн не требуется - отправьте точку.\n\n"
-            "Дедлайн должен вводиться в формате ДД/ММ/ГГГГ ЧЧ:ММ или ДД/ММ/ГГГГ"
-        )
+        await query.edit_message_text(t(user_data, "deadline"))
         return ASK_DEADLINE
     else:
         await add_task(update, context, query=True)
@@ -319,13 +344,13 @@ async def handle_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = update.effective_user.id
     user_data = get_user_data(user_id)
     if not user_data.get("api_key"):
-        await update.message.reply_text("Пожалуйста, используйте команду /start, чтобы ввести ключ API.")
+        await update.message.reply_text(t(user_data, "register"))
         return ASK_API_KEY
 
     deadline = update.message.text
     if deadline == ".":
         user_data["deadline"] = None
-        await update.message.reply_text("Установка дедлайна пропущена.")
+        await update.message.reply_text(t(user_data, "deadline_skipped"))
     else:
         try:
             if ":" in deadline:
@@ -333,9 +358,9 @@ async def handle_deadline(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             else:
                 datetime.strptime(deadline, "%d/%m/%Y")
             user_data["deadline"] = deadline
-            await update.message.reply_text("Дедлайн установлен.")
+            await update.message.reply_text(t(user_data, "deadline_set"))
         except ValueError:
-            await update.message.reply_text("Неправильный формат даты. Попробуйте снова.")
+            await update.message.reply_text(t(user_data, "err_deadline_invalid"))
             return ASK_DEADLINE
 
     save_user_data(user_id, user_data)
@@ -348,7 +373,7 @@ async def handle_description(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     user_data = get_user_data(user_id)
     if not user_data.get("api_key"):
-        await update.message.reply_text("Пожалуйста, используйте команду /start, чтобы ввести ключ API.")
+        await update.message.reply_text(t(user_data, "register"))
         return ASK_API_KEY
 
     description = update.message.text
@@ -362,10 +387,7 @@ async def handle_description(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif settings.get('priority', 1):
         return await ask_priority(update, context, user_data)
     elif settings.get('deadline', 1):
-        await update.message.reply_text(
-            "Напишите дедлайн для этой задачи в чат. Если дедлайн не требуется - отправьте точку.\n\n"
-            "Дедлайн должен вводиться в формате ДД/ММ/ГГГГ ЧЧ:ММ или ДД/ММ/ГГГГ"
-        )
+        await update.message.reply_text(t(user_data, "deadline"))
         return ASK_DEADLINE
     else:
         return await add_task(update, context)
@@ -401,7 +423,7 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, query=Fal
             headers={"Authorization": f"Bearer {api_key}"}
         ) as response:
             if response.status in (200, 204):
-                message = "Задача успешно добавлена!\nТеперь Вы можете добавить следующую задачу."
+                message = t(user_data, "success_task_added")
                 user_data["task"] = None
                 user_data["description"] = None
                 user_data["project_id"] = None
@@ -409,7 +431,7 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, query=Fal
                 user_data["deadline"] = None
                 save_user_data(user_id, user_data)
             else:
-                message = "Ошибка при добавлении задачи. Попробуйте снова."
+                message = t(user_data, "err_task_added")
 
     if query:
         await update.callback_query.edit_message_text(message)
